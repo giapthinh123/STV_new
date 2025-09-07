@@ -890,8 +890,7 @@ function generateDetailedScheduleHTML(schedule) {
                             <div class="activity-description">
                                 ${activity.type === 'transfer' ? 
                                     `<i class="fas ${getTransportIcon(activity.transport_mode)} mr-2 text-blue-500"></i>
-                                     <span class="font-medium">${getTransportName(activity.transport_mode)}</span>
-                                     <br><span class="text-gray-600 text-sm">${activity.description || activity.place_name || 'Di chuyển đến địa điểm tiếp theo'}</span>` :
+                                     <span class="font-medium">${getTransportName(activity.transport_mode)}</span>` :
                                     `<i class="fas ${activityIcon} mr-2 ${iconColor}"></i>
                                      ${activity.activity || activity.place_name}`
                                 }
@@ -922,17 +921,47 @@ function generateDetailedScheduleHTML(schedule) {
  * @returns {string} Font Awesome icon class
  */
 function getTransportIcon(transportMode) {
+    if (!transportMode) return 'fa-route';
+    
     const iconMap = {
         'walk': 'fa-walking',
         'bike': 'fa-bicycle',
+        'bicycle': 'fa-bicycle',
         'scooter': 'fa-motorcycle',
+        'motorcycle': 'fa-motorcycle',
+        'motorbike': 'fa-motorcycle',
         'taxi': 'fa-taxi',
+        'grab': 'fa-taxi',
+        'uber': 'fa-taxi',
         'bus': 'fa-bus',
         'metro': 'fa-subway',
-        'car': 'fa-car'
+        'subway': 'fa-subway',
+        'train': 'fa-train',
+        'car': 'fa-car',
+        'ojek': 'fa-motorcycle',
+        'grabbike': 'fa-motorcycle',
+        'rickshaw': 'fa-taxi',
+        'cyclo': 'fa-taxi',
+        'tricycle': 'fa-taxi',
+        'ferry': 'fa-ship',
+        'boat': 'fa-ship',
+        'ship': 'fa-ship'
     };
     
-    return iconMap[transportMode] || 'fa-route';
+    // First try exact match (case-insensitive)
+    const lowerMode = transportMode.toLowerCase();
+    if (iconMap[lowerMode]) {
+        return iconMap[lowerMode];
+    }
+    
+    // Then try partial matches for database transport names
+    for (const [key, value] of Object.entries(iconMap)) {
+        if (lowerMode.includes(key)) {
+            return value;
+        }
+    }
+    
+    return 'fa-route';
 }
 
 /**
@@ -941,17 +970,47 @@ function getTransportIcon(transportMode) {
  * @returns {string} Vietnamese name
  */
 function getTransportName(transportMode) {
+    if (!transportMode) return 'Di chuyển';
+    
     const nameMap = {
         'walk': 'Đi bộ',
-        'bike': 'Xe đạp',
+        'bike': 'Xe đạp', 
+        'bicycle': 'Xe đạp',
         'scooter': 'Xe máy',
+        'motorcycle': 'Xe máy',
+        'motorbike': 'Xe máy',
         'taxi': 'Taxi',
+        'grab': 'Grab',
+        'uber': 'Uber',
         'bus': 'Xe buýt',
         'metro': 'Tàu điện',
-        'car': 'Ô tô'
+        'train': 'Tàu hóa',
+        'car': 'Ô tô',
+        'ojek': 'Ojek',
+        'grabbike': 'GrabBike',
+        'rickshaw': 'Xích lô',
+        'cyclo': 'Xích lô',
+        'tricycle': 'Xe ba bánh',
+        'ferry': 'Phà',
+        'boat': 'Thuyền',
+        'ship': 'Tàu thủy'
     };
     
-    return nameMap[transportMode] || 'Di chuyển';
+    // First try exact match (case-insensitive)
+    const lowerMode = transportMode.toLowerCase();
+    if (nameMap[lowerMode]) {
+        return nameMap[lowerMode];
+    }
+    
+    // Then try partial matches for database transport names
+    for (const [key, value] of Object.entries(nameMap)) {
+        if (lowerMode.includes(key)) {
+            return value;
+        }
+    }
+    
+    // If no match found, capitalize the first letter and return
+    return transportMode.charAt(0).toUpperCase() + transportMode.slice(1).toLowerCase();
 }
 
 // Generate summary HTML with improved visual representation

@@ -1125,28 +1125,75 @@ function renderActivityDescription(item) {
             const transportModeNames = {
                 'walk': currentLang === 'en' ? 'Walking' : 'Đi bộ',
                 'bike': currentLang === 'en' ? 'Bicycle' : 'Xe đạp',
+                'bicycle': currentLang === 'en' ? 'Bicycle' : 'Xe đạp',
                 'scooter': currentLang === 'en' ? 'Scooter' : 'Xe máy',
+                'motorcycle': currentLang === 'en' ? 'Motorcycle' : 'Xe máy',
+                'motorbike': currentLang === 'en' ? 'Motorbike' : 'Xe máy',
                 'taxi': 'Taxi',
+                'grab': 'Grab',
+                'uber': 'Uber',
                 'bus': currentLang === 'en' ? 'Bus' : 'Xe buýt',
                 'metro': currentLang === 'en' ? 'Metro' : 'Tàu điện',
-                'car': currentLang === 'en' ? 'Car' : 'Ô tô'
+                'subway': currentLang === 'en' ? 'Subway' : 'Tàu điện ngầm',
+                'train': currentLang === 'en' ? 'Train' : 'Tàu hóa',
+                'car': currentLang === 'en' ? 'Car' : 'Ô tô',
+                'ojek': 'Ojek',
+                'grabbike': 'GrabBike',
+                'rickshaw': currentLang === 'en' ? 'Rickshaw' : 'Xích lô',
+                'cyclo': currentLang === 'en' ? 'Cyclo' : 'Xích lô',
+                'tricycle': currentLang === 'en' ? 'Tricycle' : 'Xe ba bánh',
+                'ferry': currentLang === 'en' ? 'Ferry' : 'Phà',
+                'boat': currentLang === 'en' ? 'Boat' : 'Thuyền',
+                'ship': currentLang === 'en' ? 'Ship' : 'Tàu thủy'
             };
             
             const transportModeIcons = {
                 'walk': 'fa-walking',
                 'bike': 'fa-bicycle',
+                'bicycle': 'fa-bicycle',
                 'scooter': 'fa-motorcycle',
+                'motorcycle': 'fa-motorcycle',
+                'motorbike': 'fa-motorcycle',
                 'taxi': 'fa-taxi',
+                'grab': 'fa-taxi',
+                'uber': 'fa-taxi',
                 'bus': 'fa-bus',
                 'metro': 'fa-subway',
-                'car': 'fa-car'
+                'subway': 'fa-subway',
+                'train': 'fa-train',
+                'car': 'fa-car',
+                'ojek': 'fa-motorcycle',
+                'grabbike': 'fa-motorcycle',
+                'rickshaw': 'fa-taxi',
+                'cyclo': 'fa-taxi',
+                'tricycle': 'fa-taxi',
+                'ferry': 'fa-ship',
+                'boat': 'fa-ship',
+                'ship': 'fa-ship'
             };
             
-            const transportModeName = transportModeNames[placeInfo.type] || (currentLang === 'en' ? 'Transport' : 'Di chuyển');
+            // Try exact match first, then partial match for database transport names
+            let transportModeName = transportModeNames[placeInfo.type?.toLowerCase()];
+            if (!transportModeName && placeInfo.type) {
+                // Try partial matches for database transport names
+                const lowerType = placeInfo.type.toLowerCase();
+                for (const [key, value] of Object.entries(transportModeNames)) {
+                    if (lowerType.includes(key)) {
+                        transportModeName = value;
+                        break;
+                    }
+                }
+            }
+            // Fallback
+            if (!transportModeName) {
+                transportModeName = placeInfo.type ? 
+                    (placeInfo.type.charAt(0).toUpperCase() + placeInfo.type.slice(1).toLowerCase()) : 
+                    (currentLang === 'en' ? 'Transport' : 'Di chuyển');
+            }
             const transferText = currentLang === 'en' ? 'Transfer by' : 'Di chuyển bằng';
             
             description = `<span class="font-medium text-blue-600">
-                <i class="fas ${transportModeIcons[placeInfo.type] || 'fa-route'} mr-2"></i>
+                <i class="fas ${badgeIcon} mr-2"></i>
                 ${transportModeName}
             </span>`;
             
@@ -1156,7 +1203,18 @@ function renderActivityDescription(item) {
             
             description += `<br><span class="text-gray-600 text-sm">${placeInfo.name}</span>`;
             
-            badgeIcon = transportModeIcons[placeInfo.type] || 'fa-route';
+            // Find matching icon with same logic as name
+            let badgeIconName = transportModeIcons[placeInfo.type?.toLowerCase()];
+            if (!badgeIconName && placeInfo.type) {
+                const lowerType = placeInfo.type.toLowerCase();
+                for (const [key, value] of Object.entries(transportModeIcons)) {
+                    if (lowerType.includes(key)) {
+                        badgeIconName = value;
+                        break;
+                    }
+                }
+            }
+            badgeIcon = badgeIconName || 'fa-route';
             badgeText = currentLang === 'en' ? 'Transfer' : 'Di chuyển';
             break;
             

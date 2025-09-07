@@ -3128,6 +3128,9 @@
                 if (flightSection) {
                     flightSection.classList.remove('hidden');
                     
+                    // Initialize price displays
+                    this.initializePriceDisplays();
+                    
                     // Update flight routes
                     this.updateFlightRoutes();
                     
@@ -3137,6 +3140,23 @@
                     // Scroll to flight section
                     flightSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
+            }
+
+            initializePriceDisplays() {
+                // Reset all price displays to $0
+                const departureElement = document.getElementById('departureFlightPriceDisplay');
+                const returnElement = document.getElementById('returnFlightPriceDisplay');
+                const totalElement = document.getElementById('totalPriceDisplay');
+                const totalFlightElement = document.getElementById('totalFlightPrice');
+                
+                if (departureElement) departureElement.textContent = '$0';
+                if (returnElement) returnElement.textContent = '$0';
+                if (totalElement) totalElement.textContent = '$0';
+                if (totalFlightElement) totalFlightElement.textContent = '$0';
+                
+                // Reset selected flights
+                this.selectedDepartureFlight = null;
+                this.selectedReturnFlight = null;
             }
 
             updateFlightRoutes() {
@@ -3396,18 +3416,54 @@
 
             updateOrderSummary() {
                 let totalPrice = 0;
+                let departurePriceUSD = 0;
+                let returnPriceUSD = 0;
                 
+                // Update departure flight price
                 if (this.selectedDepartureFlight) {
+                    departurePriceUSD = Math.round(this.selectedDepartureFlight.priceVND / 25000);
                     totalPrice += this.selectedDepartureFlight.priceVND;
+                    
+                    const departureElement = document.getElementById('departureFlightPriceDisplay');
+                    if (departureElement) {
+                        departureElement.textContent = `$${departurePriceUSD}`;
+                    }
+                } else {
+                    const departureElement = document.getElementById('departureFlightPriceDisplay');
+                    if (departureElement) {
+                        departureElement.textContent = '$0';
+                    }
                 }
                 
+                // Update return flight price
                 if (this.selectedReturnFlight) {
+                    returnPriceUSD = Math.round(this.selectedReturnFlight.priceVND / 25000);
                     totalPrice += this.selectedReturnFlight.priceVND;
+                    
+                    const returnElement = document.getElementById('returnFlightPriceDisplay');
+                    if (returnElement) {
+                        returnElement.textContent = `$${returnPriceUSD}`;
+                    }
+                } else {
+                    const returnElement = document.getElementById('returnFlightPriceDisplay');
+                    if (returnElement) {
+                        returnElement.textContent = '$0';
+                    }
                 }
                 
+                // Update total price displays
+                const totalPriceUSD = departurePriceUSD + returnPriceUSD;
+                
+                // Update main order summary total
                 const totalElement = document.getElementById('totalFlightPrice');
                 if (totalElement) {
-                    totalElement.textContent = totalPrice > 0 ? `$${Math.round(totalPrice / 25000)}` : '$0';
+                    totalElement.textContent = totalPriceUSD > 0 ? `$${totalPriceUSD}` : '$0';
+                }
+                
+                // Update detailed price breakdown total
+                const totalPriceElement = document.getElementById('totalPriceDisplay');
+                if (totalPriceElement) {
+                    totalPriceElement.textContent = totalPriceUSD > 0 ? `$${totalPriceUSD.toLocaleString()}` : '$0';
                 }
             }
 
@@ -4283,7 +4339,16 @@
                         }
                     });
                 });
-
+                const budget = document.getElementById('v2Budget');
+                const totalFlightElement = document.getElementById('totalFlightPrice');
+                
+                // Parse the total flight price from text content (format: "$1,580")
+                let totalFlightPrice = 0;
+                if (totalFlightElement && totalFlightElement.textContent) {
+                    const priceText = totalFlightElement.textContent.replace(/[$,]/g, '');
+                    totalFlightPrice = parseFloat(priceText) || 0;
+                }
+                
                 // Prepare request payload - CHỈ SỬ DỤNG GEMINI AI
                 const requestPayload = {
                     user_id: null,
@@ -4295,7 +4360,7 @@
                     transport_ids: likedIds.transport_ids,
                     guest_count: this.passengerCounts.adults + this.passengerCounts.children,
                     duration_days: 1, // Single day recommendation
-                    target_budget: 1111, // Default budget, could be made configurable
+                    target_budget: budget.value - totalFlightPrice, // Default budget, could be made configurable
                     user_preferences: userPreferences // ⭐ User preferences cho Gemini AI
                 };
                 
@@ -4398,8 +4463,29 @@
                                             </div>
                                             <h6 class="font-semibold text-gray-800">
                                                 ${activity.type === 'transfer' ? 
-                                                    `${this.getTransportName(activity.transport_mode)} - ${activity.place_name || activity.description || 'Di chuyển đến địa điểm tiếp theo'}` : 
-                                                    (activity.type === 'meal' ? `Ăn ở ${activity.place_name}` : activity.place_name)
+                                                    `Transfer by ${this.getTransportName(activity.transport_mode)}` : 
+                                                    (activity.type === 'meal' ? 
+                                                        (() => {
+                                                            const startHour = parseInt(activity.start_time.split(':')[0]);
+                                                            let mealType;
+                                                            if (startHour >= 6 && startHour < 11) {
+                                                                mealType = 'Breakfast at';
+                                                            } else if (startHour >= 11 && startHour < 14) {
+                                                                mealType = 'Lunch at';
+                                                            } else if (startHour >= 14 && startHour < 18) {
+                                                                mealType = 'Afternoon meal at';
+                                                            } else {
+                                                                mealType = 'Dinner at';
+                                                            }
+                                                            return `${mealType} ${activity.place_name}`;
+                                                        })()
+                                                        : (activity.type === 'hotel' ? 
+                                                            `Stay at ${activity.place_name}` :
+                                                            (activity.type === 'activity' ?
+                                                                `Visit ${activity.place_name}` :
+                                                                activity.place_name)
+                                                        )
+                                                    )
                                                 }
                                             </h6>
                                             <p class="text-sm text-gray-600">Cost: $${activity.cost}</p>
@@ -4567,12 +4653,47 @@
                                     <span class="w-8 h-8 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-sm mr-3">${day}</span>
                                     Day ${day}
                                 </h4>
-                                <div class="space-y-2">
-                                    ${activities.map(activity => `
-                                        <div class="flex items-center p-2 bg-gray-50 rounded-lg">
-                                            <span class="text-sm font-medium text-blue-600 mr-3 w-20">${activity.start_time} - ${activity.end_time}</span>
-                                            <span class="flex-1 text-gray-800">${activity.place_name}</span>
-                                            <span class="text-sm text-gray-600">$${activity.cost}</span>
+                                <div class="space-y-3">
+                                    ${activities.map((activity, index) => `
+                                        <div class="flex items-center p-3 bg-white rounded-lg shadow-sm border border-gray-100">
+                                            <div class="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg flex items-center justify-center mr-4">
+                                                <i class="fas fa-${activity.type === 'transfer' ? this.getTransportIcon(activity.transport_mode) : this.getActivityIcon(activity.type)} text-white"></i>
+                                            </div>
+                                            <div class="flex-1">
+                                                <div class="flex items-center mb-1">
+                                                    <span class="text-sm font-medium text-blue-600 mr-2">${activity.start_time} - ${activity.end_time}</span>
+                                                    <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">${activity.type}</span>
+                                                    ${activity.type === 'transfer' && activity.distance_km ? `<span class="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs ml-1">${activity.distance_km}km</span>` : ''}
+                                                </div>
+                                                <h6 class="font-semibold text-gray-800">
+                                                    ${activity.type === 'transfer' ? 
+                                                        `Transfer by ${this.getTransportName(activity.transport_mode)}` : 
+                                                        (activity.type === 'meal' ? 
+                                                            (() => {
+                                                                const startHour = parseInt(activity.start_time.split(':')[0]);
+                                                                let mealType;
+                                                                if (startHour >= 6 && startHour < 11) {
+                                                                    mealType = 'Breakfast at';
+                                                                } else if (startHour >= 11 && startHour < 14) {
+                                                                    mealType = 'Lunch at';
+                                                                } else if (startHour >= 14 && startHour < 18) {
+                                                                    mealType = 'Afternoon meal at';
+                                                                } else {
+                                                                    mealType = 'Dinner at';
+                                                                }
+                                                                return `${mealType} ${activity.place_name}`;
+                                                            })()
+                                                            : (activity.type === 'hotel' ? 
+                                                                `Stay at ${activity.place_name}` :
+                                                                (activity.type === 'activity' ?
+                                                                    `Visit ${activity.place_name}` :
+                                                                    activity.place_name)
+                                                            )
+                                                        )
+                                                    }
+                                                </h6>
+                                                <p class="text-sm text-gray-600">Cost: $${activity.cost}</p>
+                                            </div>
                                         </div>
                                     `).join('')}
                                 </div>
@@ -4684,8 +4805,51 @@
             }
 
             getTransportName(transportMode) {
-                // Sử dụng trực tiếp tên từ database, không cần mapping
-                return transportMode || 'Di chuyển';
+                if (!transportMode) return 'Transport';
+                
+                // Map transport modes to English names
+                const nameMap = {
+                    'walk': 'Walking',
+                    'bike': 'Bicycle', 
+                    'bicycle': 'Bicycle',
+                    'scooter': 'Scooter',
+                    'motorcycle': 'Motorcycle',
+                    'motorbike': 'Motorbike',
+                    'taxi': 'Taxi',
+                    'grab': 'Grab',
+                    'uber': 'Uber',
+                    'bus': 'Bus',
+                    'metro': 'Metro',
+                    'subway': 'Subway',
+                    'train': 'Train',
+                    'car': 'Car',
+                    'ojek': 'Ojek',
+                    'grabbike': 'GrabBike',
+                    'rickshaw': 'Rickshaw',
+                    'cyclo': 'Cyclo',
+                    'tricycle': 'Tricycle',
+                    'ferry': 'Ferry',
+                    'boat': 'Boat',
+                    'ship': 'Ship',
+                    'mrt' : 'Mass Rapid Transport',
+                    'lrt' : "Light Rail Transit"
+                };
+                
+                // First try exact match (case-insensitive)
+                const lowerMode = transportMode.toLowerCase();
+                if (nameMap[lowerMode]) {
+                    return nameMap[lowerMode];
+                }
+                
+                // Then try partial matches for database transport names
+                for (const [key, value] of Object.entries(nameMap)) {
+                    if (lowerMode.includes(key)) {
+                        return value;
+                    }
+                }
+                
+                // If no match found, capitalize the first letter and return
+                return transportMode.charAt(0).toUpperCase() + transportMode.slice(1).toLowerCase();
             }
 
             showErrorMessage(message) {

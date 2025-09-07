@@ -8,7 +8,7 @@ import math
 
 # ---------- CẤU HÌNH GEMINI ----------
 def config_gemini():
-    genai.configure(api_key="AIzaSyCQ8YJ7a28wf85b_oVRrW4MEQ4PYBpPCqY")
+    genai.configure(api_key="AIzaSyBidmLGlO6G5SyB5K9j3OUNTs1um3m50H0")
     return genai.GenerativeModel(model_name="models/gemini-1.5-flash")
 
 # Khởi tạo Gemini model
@@ -195,8 +195,37 @@ def _process_distances_and_times(itinerary_data: dict, cursor, user_prefs: dict 
                         end_min = end_minutes % 60
                         activity['end_time'] = f"{end_hour:02d}:{end_min:02d}"
                         
+                        # Map transport mode for display in debug output
+                        transport_name_map = {
+                            'walk': 'Đi bộ',
+                            'bike': 'Xe đạp', 
+                            'bicycle': 'Xe đạp',
+                            'scooter': 'Xe máy',
+                            'motorcycle': 'Xe máy',
+                            'motorbike': 'Xe máy',
+                            'taxi': 'Taxi',
+                            'grab': 'Grab',
+                            'uber': 'Uber',
+                            'bus': 'Xe buýt',
+                            'metro': 'Tàu điện',
+                            'subway': 'Tàu điện ngầm',
+                            'train': 'Tàu hóa',
+                            'car': 'Ô tô',
+                            'ojek': 'Ojek',
+                            'grabbike': 'GrabBike',
+                            'rickshaw': 'Xích lô',
+                            'cyclo': 'Xích lô',
+                            'tricycle': 'Xe ba bánh',
+                            'ferry': 'Phà',
+                            'boat': 'Thuyền',
+                            'ship': 'Tàu thủy'
+                        }
+                        
+                        # Get display name for debug output
+                        transport_display_name = transport_name_map.get(transport_mode.lower(), transport_mode)
+                        
                         print(f"   ✅ {prev_activity.get('place_name', 'Unknown')} → {next_activity.get('place_name', 'Unknown')}")
-                        print(f"      Distance: {distance:.2f}km, Time: {travel_time}min, Mode: {transport_mode}, Cost: ${cost}")
+                        print(f"      Distance: {distance:.2f}km, Time: {travel_time}min, Mode: {transport_display_name} ({transport_mode}), Cost: ${cost}")
                     else:
                         # Fallback nếu không có tọa độ
                         _apply_fallback_distance_and_time(activity, user_prefs)
@@ -444,7 +473,7 @@ def get_gemini_travel_recommendations(user_input: UserTourInfo, destination_name
                 {{
                 "start_time": "09:00",
                 "end_time": "10:30",
-                "type": "activity" | "meal" | "hotel" | "transfer" | "rest",
+                "type": "activity" | "meal" | "hotel" | "transfer",
                 "place_id": "<id or null>",
                 "place_name": "<string>",
                 "description": "<string>",
@@ -523,8 +552,38 @@ def get_gemini_travel_recommendations(user_input: UserTourInfo, destination_name
             itinerary_data = json.loads(result_text)
             
             # Post-process để đảm bảo transport_mode tuân theo user preferences
-            liked_modes = user_prefs.get('liked_transport_modes', [])
-            disliked_modes = user_prefs.get('disliked_transport_modes', [])
+            # First convert any transport IDs to transport mode names
+            liked_modes = []
+            for mode in user_prefs.get('liked_transport_modes', []):
+                if mode.startswith('T0'):
+                    try:
+                        cursor.execute("SELECT type FROM transports WHERE transport_id = %s", (mode,))
+                        transport_result = cursor.fetchone()
+                        if transport_result:
+                            liked_modes.append(transport_result['type'].lower())
+                            print(f"      → Converted liked transport ID {mode} to: {transport_result['type'].lower()}")
+                        else:
+                            print(f"      → Transport ID {mode} not found in database")
+                    except Exception as e:
+                        print(f"      → Error converting liked transport ID {mode}: {e}")
+                else:
+                    liked_modes.append(mode.lower())
+            
+            disliked_modes = []
+            for mode in user_prefs.get('disliked_transport_modes', []):
+                if mode.startswith('T0'):
+                    try:
+                        cursor.execute("SELECT type FROM transports WHERE transport_id = %s", (mode,))
+                        transport_result = cursor.fetchone()
+                        if transport_result:
+                            disliked_modes.append(transport_result['type'].lower())
+                            print(f"      → Converted disliked transport ID {mode} to: {transport_result['type'].lower()}")
+                        else:
+                            print(f"      → Transport ID {mode} not found in database")
+                    except Exception as e:
+                        print(f"      → Error converting disliked transport ID {mode}: {e}")
+                else:
+                    disliked_modes.append(mode.lower())
             
             print(f"Processing transport preferences:")
             print(f"   Liked modes: {liked_modes}")
@@ -551,19 +610,63 @@ def get_gemini_travel_recommendations(user_input: UserTourInfo, destination_name
                             activity['transport_mode'] = 'Taxi'
                             print(f"      → Avoiding disliked {current_mode}, using: Taxi")
                         
-                        # RULE 3: Nếu mode hiện tại null/invalid
+                        # RULE 3: Nếu mode hiện tại là transport ID (T0XXX), convert sang transport mode name
+                        elif current_mode and current_mode.startswith('T0'):
+                            # Convert transport ID to transport mode name
+                            try:
+                                cursor.execute("SELECT type FROM transports WHERE transport_id = %s", (current_mode,))
+                                transport_result = cursor.fetchone()
+                                if transport_result:
+                                    activity['transport_mode'] = transport_result['type'].lower()
+                                    print(f"      → Converted transport ID {current_mode} to: {transport_result['type'].lower()}")
+                                else:
+                                    activity['transport_mode'] = 'taxi'  # Fallback if transport ID not found
+                                    print(f"      → Transport ID {current_mode} not found, fallback to: taxi")
+                            except Exception as e:
+                                activity['transport_mode'] = 'taxi'  # Fallback on error
+                                print(f"      → Error converting {current_mode}, fallback to: taxi")
+                        
+                        # RULE 4: Nếu mode hiện tại null/invalid
                         elif not current_mode or current_mode in [None, 'null', 'unknown']:
-                            activity['transport_mode'] = 'Taxi'  # Default fallback
-                            print(f"      → Null/invalid mode, fallback to: Taxi")
+                            activity['transport_mode'] = 'taxi'  # Default fallback
+                            print(f"      → Null/invalid mode, fallback to: taxi")
                         
                         else:
                             # Mode hiện tại OK, giữ nguyên
                             print(f"      → Keeping current mode: {current_mode}")
                         
-                        # Đảm bảo có place_name cho transfer
+                        # Đảm bảo có place_name cho transfer với tên đã được mapping
                         if not activity.get('place_name') or activity.get('place_name') == 'null':
                             transport_mode = activity.get('transport_mode', 'Taxi')
-                            activity['place_name'] = f"Đi {transport_mode} đến địa điểm tiếp theo"
+                            # Map transport mode to Vietnamese name
+                            transport_name_map = {
+                                'walk': 'đi bộ',
+                                'bike': 'xe đạp', 
+                                'bicycle': 'xe đạp',
+                                'scooter': 'xe máy',
+                                'motorcycle': 'xe máy',
+                                'motorbike': 'xe máy',
+                                'taxi': 'taxi',
+                                'grab': 'Grab',
+                                'uber': 'Uber',
+                                'bus': 'xe buýt',
+                                'metro': 'tàu điện',
+                                'subway': 'tàu điện ngầm',
+                                'train': 'tàu hóa',
+                                'car': 'ô tô',
+                                'ojek': 'Ojek',
+                                'grabbike': 'GrabBike',
+                                'rickshaw': 'xích lô',
+                                'cyclo': 'xích lô',
+                                'tricycle': 'xe ba bánh',
+                                'ferry': 'phà',
+                                'boat': 'thuyền',
+                                'ship': 'tàu thủy'
+                            }
+                            
+                            # Get mapped transport name
+                            transport_display_name = transport_name_map.get(transport_mode.lower(), transport_mode)
+                            activity['place_name'] = f"Di chuyển bằng {transport_display_name}"
             
             # TÍNH TOÁN KHOẢNG CÁCH VÀ THỜI GIAN THỰC TẾ
             itinerary_data = _process_distances_and_times(itinerary_data, cursor, user_prefs)
@@ -598,19 +701,33 @@ def get_gemini_travel_recommendations(user_input: UserTourInfo, destination_name
             fallback_schedule = []
             
             # Chọn transport mode cho fallback dựa trên user preferences
-            fallback_transport = "Taxi"
+            fallback_transport = "taxi"
             fallback_cost = 8.0
-            fallback_name = "Đi Taxi đến điểm đầu tiên"
+            fallback_name = "Đi taxi đến điểm đầu tiên"
             
             liked_modes = user_prefs.get('liked_transport_modes', [])
             
             if liked_modes:
-                fallback_transport = liked_modes[0]
+                # Convert transport IDs to transport mode names nếu cần
+                preferred_mode = liked_modes[0]
+                if preferred_mode.startswith('T0'):
+                    try:
+                        cursor.execute("SELECT type FROM transports WHERE transport_id = %s", (preferred_mode,))
+                        transport_result = cursor.fetchone()
+                        if transport_result:
+                            fallback_transport = transport_result['type'].lower()
+                        else:
+                            fallback_transport = "taxi"
+                    except:
+                        fallback_transport = "taxi"
+                else:
+                    fallback_transport = preferred_mode.lower()
+                    
                 fallback_cost = _calculate_transport_cost(5.0, fallback_transport)  # Assume 5km for fallback
                 fallback_name = f"Đi {fallback_transport} đến điểm đầu tiên"
-            elif "Taxi" in user_prefs.get('disliked_transport_modes', []):
+            elif "taxi" in user_prefs.get('disliked_transport_modes', []):
                 # Nếu không có liked modes nhưng Taxi bị dislike, dùng Bus
-                fallback_transport = "Bus"
+                fallback_transport = "bus"
                 fallback_cost = _calculate_transport_cost(5.0, fallback_transport)
                 fallback_name = f"Đi {fallback_transport} đến điểm đầu tiên"
             
@@ -653,16 +770,30 @@ def get_gemini_travel_recommendations(user_input: UserTourInfo, destination_name
         error_schedule = []
         
         # Chọn transport mode cho error case dựa trên user preferences
-        error_transport = "Taxi"
-        error_name = "Đi Taxi (lịch trình lỗi)"
+        error_transport = "taxi"
+        error_name = "Đi taxi (lịch trình lỗi)"
         
         liked_modes = user_prefs.get('liked_transport_modes', [])
         
         if liked_modes:
-            error_transport = liked_modes[0]
+            # Convert transport IDs to transport mode names nếu cần
+            preferred_mode = liked_modes[0]
+            if preferred_mode.startswith('T0'):
+                try:
+                    cursor.execute("SELECT type FROM transports WHERE transport_id = %s", (preferred_mode,))
+                    transport_result = cursor.fetchone()
+                    if transport_result:
+                        error_transport = transport_result['type'].lower()
+                    else:
+                        error_transport = "taxi"
+                except:
+                    error_transport = "taxi"
+            else:
+                error_transport = preferred_mode.lower()
+                
             error_name = f"Đi {error_transport} (lịch trình lỗi)"
-        elif "Taxi" in user_prefs.get('disliked_transport_modes', []):
-            error_transport = "Bus"
+        elif "taxi" in user_prefs.get('disliked_transport_modes', []):
+            error_transport = "bus"
             error_name = f"Đi {error_transport} (lịch trình lỗi)"
         
         for day_num in range(1, duration + 1):
